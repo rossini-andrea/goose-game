@@ -21,54 +21,148 @@
 
 import cmd
 import re
+import sys
 import random
 
 
-class GooseGame(cmd.Cmd):
+class GooseGame:
+    def __init__(self, view, random_state=None):
+        self.players = {}
+        self.cells = [str(i) for i in range(64)]
+        self.cells[0] = 'Start'
+        self.cells[6] = 'The Bridge'
+
+        for i in [5, 9, 14, 18, 23, 27]:
+            self.cells[i] = str(i) + ', The Goose'
+
+        self.rnd = random.Random()
+        self.rnd.seed(random_state)
+        self.view = view
+
+    def add_player(self, name):
+        if name in self.players:
+            return False
+
+        self.players[name] = 0
+        return True
+
+    def move(self, player, dice_roll=None):
+        self.view.new_turn(player)
+
+        if dice_roll is None:
+            d1, d2 = self.rnd.sample(range(1, 7), 2)
+        else:
+            d1, d2 = tuple(dice_roll)
+
+        endgame = False
+        self.view.roll(player, d1, d2)
+        track = [self.players[player]]
+        to = self.players[player] + d1 + d2
+        trackname = lambda x: self.cells[track[x]]
+
+        if to > 63:
+            track += [63]
+            to = 63 * 2 - to
+            track += [to]
+            self.view.move(player, trackname(-3), trackname(-2))
+            self.view.bounce(player, trackname(-2), trackname(-1))
+        else:
+            track += [to]
+            self.view.move(player, trackname(-2), trackname(-1))
+
+        if 'Bridge' in self.cells[to]:
+            to = 12
+            track += [to]
+            self.view.jump(player, trackname(-2), trackname(-1))
+
+        while 'Goose' in self.cells[to]:
+            to += d1 + d2
+            track += [to]
+            self.view.move_again(player, trackname(-2), trackname(-1))
+
+        self.players[player] = to
+
+        if to == 63:
+            self.view.win(player)
+            endgame = True
+
+        self.view.end_turn(player)
+
+        return endgame
+
+
+class CliView:
+    def __init__(self, destination=None):
+        if destination is None:
+            self.destination = sys.stdout
+        else:
+            self.destination = destination
+
+    def new_turn(self, player):
+        None
+
+    def roll(self, player, d1, d2):
+        print('{} rolls {}, {}'.format(player, d1, d2), end='', file=self.destination)
+
+    def move(self, player, start, to):
+        print('. {} moves from {} to {}'.format(player, start, to), end='', file=self.destination)
+
+    def move_again(self, player, start, to):
+        print('. {} moves again and goes to {}'.format(player, to), end='', file=self.destination)
+
+    def bounce(self, player, start, to):
+        print('. {0} bounces! {0} returns to {1}'.format(player, to), end='', file=self.destination)
+
+    def jump(self, player, start, to):
+        print('. {} jumps to {}'.format(player, to), end='', file=self.destination)
+
+    def win(self, player):
+        print('. {} Wins!!'.format(player), end='', file=self.destination)
+
+    def show_message(self, message):
+        print(message, file=self.destination)
+
+    def end_turn(self, player):
+        print(file=self.destination)
+
+
+class GooseCmdLine(cmd.Cmd):
     prompt = ''
-    players = {}
-    cells = [str(i) for i in range(64)]
-    cells[0] = 'Start'
-    cells[6] = 'The Bridge'
 
-    for i in [5, 9, 14, 18, 23, 27]:
-        cells[i] = str(i) + ', The Goose'
-
-    random.seed()
+    def __init__(self, game, view):
+        super(GooseCmdLine, self).__init__()
+        self.game = game
+        self.view = view
 
     def do_add(self, line):
         """Adds a new player, syntax: add player <Player Name>"""
         args = line.split(None, maxsplit=1)
 
         if args[0] == 'player':
-            if args[1] in self.players:
-                print('{}: already existing player'.format(args[1]))
+            if not self.game.add_player(args[1]):
+                self.view.show_message('{}: already existing player'.format(args[1]))
                 return
 
-            self.players[args[1]] = 0
-            print('players: ' + ', '.join(self.players.keys()))
+            self.view.show_message('players: ' + ', '.join(self.game.players.keys()))
         else:
-            print('Invalid command.')
+            self.view.show_message('Invalid command.')
 
     def do_move(self, line):
         """Moves player by a dice roll, if the roll is omitted, the game will roll for the player. Syntax: move
         <Player Name> [dice1, dice2] """
 
-        player = max([x for x in self.players.keys() if line.startswith(x)],
+        player = max([x for x in self.game.players.keys() if line.startswith(x)],
                      key=len)
         throw = line[len(player):]
         match = re.fullmatch('\s+([1-6])\s*,\s*([1-6])\s*', throw)
 
         if match is not None:
-            d1 = int(match.group(1))
-            d2 = int(match.group(2))
+            return self.game.move(player, [int(match.group(1)), int(match.group(2))])
         elif throw.isspace() or len(throw) == 0:
-            d1, d2 = random.sample(range(1, 7), 2)
+            return self.game.move(player)
         else:
-            print('Invalid command.')
+            self.view.show_message('Invalid command.')
             return
-
-        return self.move(player, d1, d2)
 
     def do_exit(self, line):
         """Quits the game."""
@@ -79,48 +173,13 @@ class GooseGame(cmd.Cmd):
         return True
 
     def default(self, line):
-        print('Invalid command.')
+        self.view.show_message('Invalid command.')
 
-    def move(self, player, d1, d2):
-        endgame = False
-        message = '{} rolls {}, {}'.format(player, d1, d2)
-        track = [self.players[player]]
-        to = self.players[player] + d1 + d2
-        trackname = lambda x: self.cells[track[x]]
 
-        if to > 63:
-            track += [63]
-            to = 63 * 2 - to
-            track += [to]
-            message += '. {0} moves from {1} to {2}. {0} bounces! {0} returns to {3}'\
-                .format(player, trackname(-3), trackname(-2), trackname(-1))
-        else:
-            track += [to]
-            message += '. {0} moves from {1} to {2}' \
-                .format(player, trackname(-2), trackname(-1))
-
-        if 'Bridge' in self.cells[to]:
-            to = 12
-            track += [to]
-            message += '. {} jumps to {}'\
-                .format(player, trackname(-1))
-
-        while 'Goose' in self.cells[to]:
-            to += d1 + d2
-            track += [to]
-            message += '. {} moves again and goes to {}'\
-                .format(player, trackname(-1))
-
-        self.players[player] = to
-
-        if to == 63:
-            message += '. {} Wins!!'.format(player)
-            endgame = True
-
-        print(message)
-
-        return endgame
+def main():
+    view = CliView()
+    GooseCmdLine(GooseGame(view), view).cmdloop()
 
 
 if __name__ == "__main__":
-    GooseGame().cmdloop()
+    main()

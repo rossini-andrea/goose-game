@@ -23,6 +23,13 @@ cd goose-game
 ./goose-game.py
 ```
 
+Alternatively, run the explicit python interpreter:
+
+```sh
+cd goose-game
+python goose-game.py
+```
+
 ### On Windows
 
 ```bat
