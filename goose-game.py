@@ -23,6 +23,10 @@ import cmd
 import re
 import sys
 import random
+from collections import namedtuple
+
+
+Track = namedtuple('Track', 'cell, name')
 
 
 class GooseGame:
@@ -56,29 +60,29 @@ class GooseGame:
 
         endgame = False
         self.view.roll(player, d1, d2)
-        track = [self.players[player]]
+        start_cell = self.players[player]
+        track = [Track(start_cell, self.cells[start_cell])]
         to = self.players[player] + d1 + d2
-        trackname = lambda x: self.cells[track[x]]
 
         if to > 63:
-            track += [63]
+            track += [Track(63, self.cells[63])]
             to = 63 * 2 - to
-            track += [to]
-            self.view.move(player, trackname(-3), trackname(-2))
-            self.view.bounce(player, trackname(-2), trackname(-1))
+            track += [Track(to, self.cells[to])]
+            self.view.move(player, track[-3], track[-2])
+            self.view.bounce(player, track[-2], track[-1])
         else:
-            track += [to]
-            self.view.move(player, trackname(-2), trackname(-1))
+            track += [Track(to, self.cells[to])]
+            self.view.move(player, track[-2], track[-1])
 
         if 'Bridge' in self.cells[to]:
             to = 12
-            track += [to]
-            self.view.jump(player, trackname(-2), trackname(-1))
+            track += [Track(to, self.cells[to])]
+            self.view.jump(player, track[-2], track[-1])
 
         while 'Goose' in self.cells[to]:
             to += d1 + d2
-            track += [to]
-            self.view.move_again(player, trackname(-2), trackname(-1))
+            track += [Track(to, self.cells[to])]
+            self.view.move_again(player, track[-2], track[-1])
 
         self.players[player] = to
 
@@ -92,11 +96,8 @@ class GooseGame:
 
 
 class CliView:
-    def __init__(self, destination=None):
-        if destination is None:
-            self.destination = sys.stdout
-        else:
-            self.destination = destination
+    def __init__(self, destination=sys.stdout):
+        self.destination = destination
 
     def new_turn(self, player):
         None
@@ -105,16 +106,16 @@ class CliView:
         print('{} rolls {}, {}'.format(player, d1, d2), end='', file=self.destination)
 
     def move(self, player, start, to):
-        print('. {} moves from {} to {}'.format(player, start, to), end='', file=self.destination)
+        print('. {} moves from {} to {}'.format(player, start.name, to.name), end='', file=self.destination)
 
     def move_again(self, player, start, to):
-        print('. {} moves again and goes to {}'.format(player, to), end='', file=self.destination)
+        print('. {} moves again and goes to {}'.format(player, to.name), end='', file=self.destination)
 
     def bounce(self, player, start, to):
-        print('. {0} bounces! {0} returns to {1}'.format(player, to), end='', file=self.destination)
+        print('. {0} bounces! {0} returns to {1}'.format(player, to.name), end='', file=self.destination)
 
     def jump(self, player, start, to):
-        print('. {} jumps to {}'.format(player, to), end='', file=self.destination)
+        print('. {} jumps to {}'.format(player, to.name), end='', file=self.destination)
 
     def win(self, player):
         print('. {} Wins!!'.format(player), end='', file=self.destination)
